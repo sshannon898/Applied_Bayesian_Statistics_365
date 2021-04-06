@@ -1,0 +1,157 @@
+---
+title: "STA365HW5"
+author: "Stephen Shannon"
+date: "April 3, 2020"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r}
+library(rstan)
+library(ggplot2)
+library(dplyr)
+library(bayesplot)
+```
+
+Question 1) Generating 3 data sets with p = 10, p = 50, p = 100, with n = 100, sigma = 0.4.
+
+```{r}
+n = 1:100
+p = 10
+beta_init = c(1,2,3)
+sum = 0
+count = 1:100
+x10 <- list()
+for (i in n){
+  x_vec = c()
+  x_123 = c(cos(i), sin(i), tan(i))
+  rnorm_list <- rnorm(p-3)
+  x_vec = c(x_123, rnorm_list)
+  x10[[i]] <- x_vec
+}
+remainder10 <- rep(0, 7)
+beta10 <- c(beta_init, remainder10)
+
+y10=c()
+for (i in count){
+  mean <- x10[[i]]%*%beta10
+  y_sim <- rnorm(1, mean, 0.4)
+  y10 <- c(y10, y_sim)
+}
+
+
+p = 50
+x50 <- list()
+for (i in n){
+  x_vec = c()
+  x_123 = c(cos(i), sin(i), tan(i))
+  rnorm_list <- rnorm(p-3)
+  x_vec = c(x_123, rnorm_list)
+  x50[[i]] <- x_vec
+}
+remainder50 <- rep(0, 47)
+beta50 <- c(beta_init, remainder50)
+
+count = 1:100
+y50=c()
+for (i in count){
+  mean <- x50[[i]]%*%beta50
+  y_sim <- rnorm(1, mean, 0.4)
+  y50 <- c(y50, y_sim)
+}
+
+p = 100
+x100 <- list()
+for (i in n){
+  x_vec = c()
+  x_123 = c(cos(i), sin(i), tan(i))
+  rnorm_list <- rnorm(p-3)
+  x_vec = c(x_123, rnorm_list)
+  x100[[i]] <- x_vec
+}
+remainder100 <- rep(0, 97)
+beta100 <- c(beta_init, remainder100)
+
+count = 1:100
+y100=c()
+for (i in count){
+  mean <- x100[[i]]%*%beta100
+  y_sim <- rnorm(1, mean, 0.4)
+  y100 <- c(y100, y_sim)
+}
+```
+
+Q2) Creating the stan model
+
+For the prior on the shrinkage parameter, lambda, I chose Cauchy ~ (0,3), as this produces a heavy tailed distribution which is suitable for LASSO regression. 
+
+```{stan, output.var ="homework5"}
+data {
+  int<lower = 0> n; // number of observations
+  int<lower = 0> p; // number of covariates
+  matrix[n,p] x; // covariates are the rows!
+  vector[n] y;
+}
+
+parameters {
+  real mu;
+  real<lower = 0> lambda;
+  vector[p] beta;
+  real<lower = 0> sigma;
+}
+
+model {
+  y ~ normal(mu + x*beta, sigma);
+  sigma ~ normal(0,1);
+  for (i in 1:p) {
+  beta[i] ~ double_exponential(mu, lambda);
+  }
+  mu ~ normal(0,1);
+  lambda ~ cauchy(0,3);
+}
+
+```
+
+P = 10 fit
+```{r}
+
+x_matrix <- t(sapply(x10, unlist))
+stan_data <- list(n=100, p=10, x=x_matrix, y=y10)
+
+fit <- sampling(homework5, data = stan_data)
+
+posterior <- as.matrix(fit)
+plot_title <- ggtitle("Posterior distribution of Beta_j, p = 10")
+mcmc_areas(posterior)
+```
+
+P = 50 fit
+```{r}
+
+x_matrix <- t(sapply(x50, unlist))
+stan_data <- list(n=100, p=50, x=x_matrix, y=y50)
+
+fit <- sampling(homework5, data = stan_data)
+
+posterior <- as.matrix(fit)
+plot_title <- ggtitle("Posterior distribution of Beta_j, p = 50")
+mcmc_areas(posterior)
+
+```
+
+P = 100 fit
+```{r}
+
+x_matrix <- t(sapply(x100, unlist))
+stan_data <- list(n=100, p=100, x=x_matrix, y=y100)
+
+fit <- sampling(homework5, data = stan_data)
+
+posterior <- as.matrix(fit)
+plot_title <- ggtitle("Posterior distribution of Beta_j, p = 100")
+mcmc_areas(posterior)
+
+```
+
+In all 3 fits, the Bayesian LASSO does a pretty good job of sending almost all the beta's to 0. The Cauchy ~ (0,3) prior has shrunk all the 'zero' parameters to at least |-0.11|. The Cauchy prior correctly estimates beta 3 to be 3 in all 3 fits. However, it slightly underestimates beta 2 in all 3 models, estimating it to be about 1.9. In model p = 10, beta 1 is overestimated to be 1.09, but in models p = 50, 100, beta 1 is underestimated at 0.8. Overall, the Cauchy prior may have overshrunk the parameters, but it has succesfully sent most of the 0 parameters to 0.

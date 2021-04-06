@@ -1,0 +1,123 @@
+---
+title: "STA365Homework4"
+author: "Stephen Shannon"
+date: "March 29, 2020"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r}
+library(tidyverse)
+library(rstan)
+
+
+survey <- readr::read_csv(file = "survey.csv")
+poststrat <- readr::read_csv(file = "poststrat.csv")
+head(survey)
+head(poststrat)
+```
+
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+Question 1) Write a stan program that fits a multilevel logisitic regression model to the survey data.
+
+```{stan, output.var ="cat_pref_model"}
+  data {
+  int<lower = 0> n_survey;
+  int<lower = 0> n_age;
+  int<lower = 0> n_eth;
+  int<lower = 0> n_income;
+  int<lower = 0> n_state;
+  int cat_pref[n_survey];
+  vector[n_survey] male;
+  int age[n_survey];
+  int eth[n_survey];
+  int income[n_survey];
+  int state[n_survey];
+  // Bit for poststratification
+  int<lower = 0> n_pred;
+  vector[n_pred] male_pred;
+  int age_pred[n_pred];
+  int eth_pred[n_pred];
+  int N_in_cell_pred[n_pred];
+}
+parameters {
+  real mu;
+  real beta;
+  vector[n_age] z_age;
+  vector[n_eth] z_eth;
+  vector[n_income] z_income;
+  vector[n_state] z_state;
+  real<lower= 0> tau_age;
+  real<lower= 0> tau_eth;
+  real<lower= 0> tau_income;
+  real<lower= 0> tau_state;
+}
+transformed parameters {
+  vector[n_age] alpha_age = tau_age * z_age;
+  vector[n_eth] alpha_eth = tau_eth * z_eth;
+  vector[n_income] alpha_income = tau_income * z_income;
+  vector[n_state] alpha_state = tau_state * z_state;
+}
+model {
+  cat_pref ~ binomial_logit(1, mu + beta*male + alpha_age[age] + alpha_eth[eth] + alpha_income[income] + alpha_state[state]);
+  z_age ~ normal(0,1);
+  z_eth ~ normal(0,1);
+  z_state ~ normal(0,1);
+  z_income ~ normal(0,1);
+  tau_age ~ normal(0,1);
+  tau_eth ~ normal(0,1);
+  mu ~ normal(0,1);
+  beta ~ normal(0,1);
+}
+generated quantities {
+  int cat_pref_pred[n_pred];
+  for (n in 1:n_pred) {
+    cat_pref_pred[n] = binomial_rng(N_in_cell_pred[n], 
+   1.0/(1.0 + exp(-(mu + beta*male_pred[n] + alpha_age[age_pred[n]] + alpha_eth[eth_pred[n]]))));
+  }
+}
+
+```
+
+Question 2) Use the poststratification matrix and the samples frm the posterior to get the posterior of the total proportion of cat lovers. Plot the posterior
+```{r}
+stan_data <- list(
+  n_survey = length(survey$cat_pref),
+  n_age = length(unique(poststrat$age)),
+  n_eth = length(unique(poststrat$eth)),
+  n_income = length(unique(poststrat$income)),
+  n_state = length(unique(poststrat$state)),
+  cat_pref = survey$cat_pref,
+  male = survey$male,
+  age = survey$age,
+  eth = survey$eth,
+  income = survey$income,
+  state = survey$state,
+  n_pred = length(poststrat$male),
+  male_pred = poststrat$male,
+  age_pred = poststrat$age,
+  eth_pred = poststrat$eth,
+  income_pred = poststrat$income,
+  state_pred = poststrat$state,
+  N_in_cell_pred = poststrat$N
+)
+fit <- sampling(cat_pref_model, data = stan_data, control=list(adapt_delta=0.99))
+
+## Propotion of people saying cat_pref
+n_pop <- sum(poststrat$N)
+cat_pref <- rstan::extract(fit,"cat_pref_pred")
+# This gives a 4000x6300 matrix so each row
+# is a sample from the posterior predictive!
+prop <- rowSums(cat_pref$cat_pref_pred)/n_pop
+hist(prop,breaks=30)
+```

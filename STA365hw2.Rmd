@@ -1,0 +1,331 @@
+---
+title: "STA365 HW2"
+author: "Stephen Shannon"
+date: "February 3, 2020"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(rstan)
+library(ggplot2)
+library(dplyr)
+```
+
+Question 1: Generating 3 data-sets of n=10, 100, 1000.
+Beta1 = 0.2
+beta2 = 0.8
+
+```{r Q1 Simulating 3 data sets}
+n1 = 10
+beta1 = 0.2
+beta2 = 0.8
+sigma = 1
+x1 = rnorm(n1)
+y1 = rnorm(n1, beta1*x1 + beta2*x1, sigma)
+
+
+n2 = 100
+x2 = rnorm(n2)
+y2 = rnorm(n2, beta1*x2 + beta2*x2, sigma)
+
+
+n3 = 1000
+x3 = rnorm(n3)
+y3 = rnorm(n3, beta1*x3 + beta2*x3, sigma)
+```
+(1-1)
+
+Question 2: The stan model and fitting p(Beta)
+
+```{stan, output.var ="homework2"}
+data {
+  int<lower = 0> n; // number of observations
+  int<lower = 0> p; // number of covariates
+  matrix[n,p] x; // covariates are the rows!
+  vector[n] y;
+  vector[p] x_pred; // where to predict
+}
+
+parameters {
+  real mu;
+  vector[p] beta;
+  real<lower = 0> sigma;
+}
+
+model {
+  y ~ normal(x*beta, sigma);
+  mu ~ normal(0,1)
+  sigma ~ normal(0,1);
+}
+
+generated quantities {
+  real y_pred;
+  y_pred = normal_rng(x_pred'*beta, sigma);
+}
+
+```
+(2-1)
+
+```{r Q2 n10 fit}
+
+p = 2;
+x1_matrix <- matrix(c(x1, x1), nrow = n1, ncol = p)
+x_pred = c(1,1)
+stan_data1 <- list(n=n1, p=p, x=x1_matrix, y=y1, x_pred=x_pred)
+
+fit <- sampling(homework2, data = stan_data1)
+print(fit)
+```
+(2-2)
+
+
+```{r  Q2 n100 fit}
+p = 2;
+x2_matrix <- matrix(c(x2, x2), nrow = n2, ncol = p)
+x_pred = c(1,1)
+stan_data2 <- list(n=n2, p=p, x=x2_matrix, y=y2, x_pred=x_pred)
+
+fit <- sampling(homework2, data = stan_data2)
+print(fit)
+```
+(2-3)
+
+```{r Q2 n1000 fit}
+p = 2;
+x3_matrix <- matrix(c(x3, x3), nrow = n3, ncol = p)
+x_pred = c(1,1)
+stan_data3 <- list(n=n3, p=p, x=x3_matrix, y=y3, x_pred=x_pred)
+
+fit <- sampling(homework2, data = stan_data2)
+print(fit)
+```
+(2-4)
+
+Examining the fits, we find values of Rhat for Beta1 and 2 is consistently over 1.05, which indicates that the Markov chains did not converge to a single estimate. Because there is no unique MLE, the chains rapidly diverge. We also find that despite 3 different sample sizes of 10, 100 and 1000, the effective sample sizes for each fit was 3, 4, 2 respectively. As the chains have not converged, the estimate of the variance for a parameter increases greatly, in turn, samples become more greatly correlated. n_eff measures indepedently drawn samples, and a low number indicates many correlated drawn samples, a consequence of an incredibly large variance for the value of Beta.
+
+As a result of divergent chains, the fits for all 3 data sets vary greatly from each other, despite being generated from the same model. Our estimates are poor and should not be used.
+
+Question 3: Constructing a prior of N(0,1) for Beta.
+
+We create a new stan model, assig
+```{stan, output.var ="homework2gang"}
+data {
+  int<lower = 0> n; // number of observations
+  int<lower = 0> p; // number of covariates
+  matrix[n,p] x; // covariates are the rows!
+  vector[n] y;
+  vector[p] x_pred; // where to predict
+}
+
+parameters {
+  vector[p] beta;
+  real<lower = 0> sigma;
+}
+
+model {
+  y ~ normal(x*beta, sigma);
+  sigma ~ normal(0,1);
+  for (i in 1:p) {
+  beta[i] ~ normal(0,1);
+  }
+}
+
+generated quantities {
+  real y_pred;
+  y_pred = normal_rng(x_pred'*beta, sigma);
+  
+}
+
+```
+(3-1)
+
+```{r Q3 n10 fit}
+
+p = 2;
+x1_matrix <- matrix(c(x1, x1), nrow = n1, ncol = p)
+x_pred = c(1,1)
+stan_data1 <- list(n=n1, p=p, x=x1_matrix, y=y1, x_pred=x_pred)
+
+fit <- sampling(homework2gang, data = stan_data1)
+print(fit)
+```
+(3-2)
+
+
+```{r  Q3 n100 fit}
+p = 2;
+x2_matrix <- matrix(c(x2, x2), nrow = n2, ncol = p)
+x_pred = c(1,1)
+stan_data2 <- list(n=n2, p=p, x=x2_matrix, y=y2, x_pred=x_pred)
+
+fit <- sampling(homework2gang, data = stan_data2)
+print(fit)
+```
+(3-3)
+
+```{r Q3 n1000 fit}
+p = 2;
+x3_matrix <- matrix(c(x3, x3), nrow = n3, ncol = p)
+x_pred = c(1,1)
+stan_data3 <- list(n=n3, p=p, x=x3_matrix, y=y3, x_pred=x_pred)
+
+fit <- sampling(homework2gang, data = stan_data2)
+print(fit)
+```
+(3-4)
+
+Examining all model fits, the markov chains converged for each data set as Rhat is equal to 1 for all estimates of beta. As the sample size of the data-set increased, the estimated mean for beta1 and beta2 approaches to 0.5. Furthermore, the n_eff for each beta estimator is consistently above 1100, indicating that there was a low correlation between the samples. This is a result of setting a prior on Beta 1 and 2 of being normal distributions with mu 0 and sigma 1. The prior enforces the model to search within a small, fixed range of values, thus arbitrarily increasing n_eff and ensuring convergence of the chains. Regardless, these estimates do not match the true value of 0.2 and 0.8 for Beta1 and Beta2.  Despite having converging chains and low variability for each estimate, the prior only made it possible for chains to converge on a degenerate model. However, the model did accurately estimate the value of sigma, which was 1. This is because sigma was not a degenerate term in the model.
+
+Appendix
+
+```{r, eval=FALSE}
+n1 = 10
+beta1 = 0.2
+beta2 = 0.8
+sigma = 1
+x1 = rnorm(n1)
+y1 = rnorm(n1, beta1*x1 + beta2*x1, sigma)
+
+
+n2 = 100
+x2 = rnorm(n2)
+y2 = rnorm(n2, beta1*x2 + beta2*x2, sigma)
+
+
+n3 = 1000
+x3 = rnorm(n3)
+y3 = rnorm(n3, beta1*x3 + beta2*x3, sigma)
+```
+(1-1)
+
+```{stan, output.var ="homework2", eval=FALSE}
+data {
+  int<lower = 0> n; // number of observations
+  int<lower = 0> p; // number of covariates
+  matrix[n,p] x; // covariates are the rows!
+  vector[n] y;
+  vector[p] x_pred; // where to predict
+}
+
+parameters {
+  vector[p] beta;
+  real<lower = 0> sigma;
+}
+
+model {
+  y ~ normal(x*beta, sigma);
+  sigma ~ normal(0,1);
+}
+
+generated quantities {
+  real y_pred;
+  y_pred = normal_rng(x_pred'*beta, sigma);
+}
+
+```
+(2-1)
+
+```{r, eval=FALSE}
+
+p = 2;
+x1_matrix <- matrix(c(x1, x1), nrow = n1, ncol = p)
+x_pred = c(1,1)
+stan_data1 <- list(n=n1, p=p, x=x1_matrix, y=y1, x_pred=x_pred)
+
+fit <- sampling(homework2, data = stan_data1)
+print(fit)
+```
+(2-2)
+
+
+```{r, eval=FALSE}
+p = 2;
+x2_matrix <- matrix(c(x2, x2), nrow = n2, ncol = p)
+x_pred = c(1,1)
+stan_data2 <- list(n=n2, p=p, x=x2_matrix, y=y2, x_pred=x_pred)
+
+fit <- sampling(homework2, data = stan_data2)
+print(fit)
+```
+(2-3)
+
+```{r,eval=FALSE}
+p = 2;
+x3_matrix <- matrix(c(x3, x3), nrow = n3, ncol = p)
+x_pred = c(1,1)
+stan_data3 <- list(n=n3, p=p, x=x3_matrix, y=y3, x_pred=x_pred)
+
+fit <- sampling(homework2, data = stan_data2)
+print(fit)
+```
+(2-4)
+
+```{stan, output.var ="homework2gang", eval=FALSE}
+data {
+  int<lower = 0> n; // number of observations
+  int<lower = 0> p; // number of covariates
+  matrix[n,p] x; // covariates are the rows!
+  vector[n] y;
+  vector[p] x_pred; // where to predict
+}
+
+parameters {
+  vector[p] beta;
+  real<lower = 0> sigma;
+}
+
+model {
+  y ~ normal(x*beta, sigma);
+  sigma ~ normal(0,1);
+  for (i in 1:p) {
+  beta[i] ~ normal(0,1);
+  }
+}
+
+generated quantities {
+  real y_pred;
+  y_pred = normal_rng(x_pred'*beta, sigma);
+  
+}
+
+```
+(3-1)
+
+```{r, eval=FALSE}
+
+p = 2;
+x1_matrix <- matrix(c(x1, x1), nrow = n1, ncol = p)
+x_pred = c(1,1)
+stan_data1 <- list(n=n1, p=p, x=x1_matrix, y=y1, x_pred=x_pred)
+
+fit <- sampling(homework2gang, data = stan_data1)
+print(fit)
+```
+(3-2)
+
+
+```{r, eval=FALSE}
+p = 2;
+x2_matrix <- matrix(c(x2, x2), nrow = n2, ncol = p)
+x_pred = c(1,1)
+stan_data2 <- list(n=n2, p=p, x=x2_matrix, y=y2, x_pred=x_pred)
+
+fit <- sampling(homework2gang, data = stan_data2)
+print(fit)
+```
+(3-3)
+
+```{r, eval=FALSE}
+p = 2;
+x3_matrix <- matrix(c(x3, x3), nrow = n3, ncol = p)
+x_pred = c(1,1)
+stan_data3 <- list(n=n3, p=p, x=x3_matrix, y=y3, x_pred=x_pred)
+
+fit <- sampling(homework2gang, data = stan_data2)
+print(fit)
+```
+(3-4)
